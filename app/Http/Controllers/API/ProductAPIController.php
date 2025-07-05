@@ -39,24 +39,33 @@ class ProductAPIController extends AppBaseController
     public function index(Request $request): ProductCollection
     {
         $perPage = getPageSize($request);
-        $products = $this->productRepository;
+        $query = Product::query();
+
+        if ($request->get('search')) {
+            $search = $request->get('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'LIKE', "%{$search}%")
+                ->orWhere('code', 'LIKE', "%{$search}%")
+                ->orWhere('notes', 'LIKE', "%{$search}%"); // 👈 Añadido
+            });
+        }
 
         if ($request->get('product_unit')) {
-            $products->where('product_unit', $request->get('product_unit'));
+            $query->where('product_unit', $request->get('product_unit'));
         }
 
         if ($request->get('warehouse_id') && $request->get('warehouse_id') != 'null') {
             $warehouseId = $request->get('warehouse_id');
-            $products->whereHas('stock', function ($q) use ($warehouseId) {
+            $query->whereHas('stock', function ($q) use ($warehouseId) {
                 $q->where('manage_stocks.warehouse_id', $warehouseId);
             })->with([
-                'stock' => function (HasOne $query) use ($warehouseId) {
-                    $query->where('manage_stocks.warehouse_id', $warehouseId);
+                'stock' => function (HasOne $q) use ($warehouseId) {
+                    $q->where('manage_stocks.warehouse_id', $warehouseId);
                 },
             ]);
         }
 
-        $products = $products->paginate($perPage);
+        $products = $query->paginate($perPage);
         ProductResource::usingWithCollection();
 
         return new ProductCollection($products);

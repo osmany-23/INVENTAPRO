@@ -35,42 +35,63 @@ class MainProductAPIController extends AppBaseController
 
 
     public function index(Request $request)
-    {
-        $perPage = getPageSize($request);
-        $products = $this->mainProductRepository;
+{
+    $perPage = getPageSize($request);
 
-        if ($request->get('product_unit')) {
-            $products->where('product_unit', $request->get('product_unit'));
-        }
+    // Inicia consulta
+    $query = MainProduct::with('products');
 
-        if($request->get('brand_id')){
-            $products->whereHas('products.brand', function ($q) use ($request) {
-                $q->where('brands.id', $request->get('brand_id'));
-            });
-        }
+    // Filtro de texto
+    if ($request->has('filter') && isset($request->filter['search'])) {
+        $search = $request->filter['search'];
 
-        if($request->get('product_category_id')){
-            $products->whereHas('products.productCategory', function ($q) use ($request) {
-                $q->where('product_categories.id', $request->get('product_category_id'));
-            });
-        }
-
-        if ($request->get('warehouse_id') && $request->get('warehouse_id') != 'null') {
-            $warehouseId = $request->get('warehouse_id');
-            $products->whereHas('stock', function ($q) use ($warehouseId) {
-                $q->where('manage_stocks.warehouse_id', $warehouseId);
-            })->with([
-                'stock' => function (HasOne $query) use ($warehouseId) {
-                    $query->where('manage_stocks.warehouse_id', $warehouseId);
-                },
-            ]);
-        }
-
-        $products = $products->paginate($perPage);
-        MainProductResource::usingWithCollection();
-
-        return new MainProductCollection($products);
+        $query->where(function ($q) use ($search) {
+            $q->where('name', 'LIKE', "%{$search}%")
+              ->orWhere('code', 'LIKE', "%{$search}%")
+              ->orWhereHas('products', function ($sub) use ($search) {
+                  $sub->where('notes', 'LIKE', "%{$search}%");
+              });
+        });
     }
+
+    // Filtro por unidad
+    if ($request->get('product_unit')) {
+        $query->where('product_unit', $request->get('product_unit'));
+    }
+
+    // Filtro por marca
+    if ($request->get('brand_id')) {
+        $query->whereHas('products.brand', function ($q) use ($request) {
+            $q->where('brands.id', $request->get('brand_id'));
+        });
+    }
+
+    // Filtro por categoría
+    if ($request->get('product_category_id')) {
+        $query->whereHas('products.productCategory', function ($q) use ($request) {
+            $q->where('product_categories.id', $request->get('product_category_id'));
+        });
+    }
+
+    // Filtro por almacén
+    if ($request->get('warehouse_id') && $request->get('warehouse_id') != 'null') {
+        $warehouseId = $request->get('warehouse_id');
+        $query->whereHas('stock', function ($q) use ($warehouseId) {
+            $q->where('manage_stocks.warehouse_id', $warehouseId);
+        })->with([
+            'stock' => function (HasOne $q) use ($warehouseId) {
+                $q->where('manage_stocks.warehouse_id', $warehouseId);
+            },
+        ]);
+    }
+
+    // Paginación y respuesta
+    $products = $query->paginate($perPage);
+    MainProductResource::usingWithCollection();
+
+    return new MainProductCollection($products);
+}
+
 
     public function show($id): MainProductResource
     {
